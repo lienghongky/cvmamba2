@@ -41,3 +41,8 @@ _darcs
 yarn.lock
 package-lock.json
 .env
+
+datasets
+datasets/*
+experiments/*
+tb_logger/*

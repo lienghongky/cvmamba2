@@ -1,11 +1,13 @@
 # CVMambaIR
 
-### Create Environment
+### install Dep
 ```
-conda create -n cvmambair python=3.11.7 pip
+uv sync
 
 ```
-### Activate Env
+
+### train
 ```
-conda activate cvmambair
+CUDA_VISIBLE_DEVICES=1,2,3 && uv run torchrun --nproc_per_node=3 --master_port=2414 run/train.py -opt run/options/train/train_CVMambaIR_RealDN.yml --launcher pytorch
+
 ```
