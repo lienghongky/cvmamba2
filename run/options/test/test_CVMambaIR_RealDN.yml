@@ -1,0 +1,52 @@
+name: test_CVMambaIR_RealDN
+model_type: CVMambaIRBaseDenoising
+scale: 1
+num_gpu: 1
+manual_seed: 0
+
+datasets:
+  test_1:
+    task: denoising_color
+    name: SIDD
+    type: PairedImageDataset
+    dataroot_gt: SIDD/target_crops
+    dataroot_lq: SIDD/input_crops
+    filename_tmpl: '{}'
+    io_backend:
+      type: disk
+
+# network structures
+network_g:
+  type: CVMambaIRBase
+  inp_channels: 3
+  out_channels: 3
+  dim: 48
+  #num_blocks: [4, 6, 6, 8]
+  num_blocks: [2, 4, 4, 6]
+  num_refinement_blocks: 2
+  mlp_ratio: 2
+  bias: False
+  dual_pixel_task: False
+
+
+# path
+path:
+  pretrain_network_g: experiments/CVMambaIRBase_RealDN/models/net_g_latest.pth
+
+# validation settings
+val:
+  window_size: 8
+  save_img: True
+  suffix: ~  # add suffix to saved images, if None, use exp name
+  selfensemble_testing: false
+  patchwise_testing: false
+
+  metrics:
+    psnr: # metric name, can be arbitrary
+      type: calculate_psnr
+      crop_border: 0
+      test_y_channel: false
+    ssim:
+      type: calculate_ssim
+      crop_border: 0
+      test_y_channel: false
