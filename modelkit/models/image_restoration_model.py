@@ -5,7 +5,7 @@ from copy import deepcopy
 from os import path as osp
 from tqdm import tqdm
 from modelkit.utils.registry import MODEL_REGISTRY
-
+from modelkit.models.sr_model import SRModel
 
 from modelkit.archs import build_network
 from modelkit.models.base_model import BaseModel
@@ -20,23 +20,49 @@ import numpy as np
 import cv2
 import torch.nn.functional as F
 from functools import partial
-from modelkit.utils import Mixing_Augment
 
+class Mixing_Augment:
+    def __init__(self, mixup_beta, use_identity, device):
+        self.dist = torch.distributions.beta.Beta(torch.tensor([mixup_beta]), torch.tensor([mixup_beta]))
+        self.device = device
 
+        self.use_identity = use_identity
+
+        self.augments = [self.mixup]
+
+    def mixup(self, target, input_):
+        lam = self.dist.rsample((1,1)).item()
+    
+        r_index = torch.randperm(target.size(0)).to(self.device)
+    
+        target = lam * target + (1-lam) * target[r_index, :]
+        input_ = lam * input_ + (1-lam) * input_[r_index, :]
+    
+        return target, input_
+
+    def __call__(self, target, input_):
+        if self.use_identity:
+            augment = random.randint(0, len(self.augments))
+            if augment < len(self.augments):
+                target, input_ = self.augments[augment](target, input_)
+        else:
+            augment = random.randint(0, len(self.augments)-1)
+            target, input_ = self.augments[augment](target, input_)
+        return target, input_
 @MODEL_REGISTRY.register()
-class CVMambaIRDenoising(BaseModel):
+class ImageCleanModel(BaseModel):
     """Base Deblur model for single image deblur."""
 
     def __init__(self, opt):
-        super(CVMambaIRDenoising, self).__init__(opt)
+        super(ImageCleanModel, self).__init__(opt)
 
         # define network
-        if self.is_train:
-            self.mixing_flag = self.opt['train']['mixing_augs'].get('mixup', False)
-            if self.mixing_flag:
-                mixup_beta       = self.opt['train']['mixing_augs'].get('mixup_beta', 1.2)
-                use_identity     = self.opt['train']['mixing_augs'].get('use_identity', False)
-                self.mixing_augmentation = Mixing_Augment(mixup_beta, use_identity, self.device)
+
+        self.mixing_flag = self.opt['train']['mixing_augs'].get('mixup', False)
+        if self.mixing_flag:
+            mixup_beta       = self.opt['train']['mixing_augs'].get('mixup_beta', 1.2)
+            use_identity     = self.opt['train']['mixing_augs'].get('use_identity', False)
+            self.mixing_augmentation = Mixing_Augment(mixup_beta, use_identity, self.device)
 
         self.net_g = build_network(deepcopy(opt['network_g']))
         self.net_g = self.model_to_device(self.net_g)
@@ -79,7 +105,8 @@ class CVMambaIRDenoising(BaseModel):
         if train_opt.get('pixel_opt'):
             pixel_type = train_opt['pixel_opt'].pop('type')
             cri_pix_cls = getattr(loss_module, pixel_type)
-            self.cri_pix = cri_pix_cls(**train_opt['pixel_opt']).to(self.device)
+            self.cri_pix = cri_pix_cls(**train_opt['pixel_opt']).to(
+                self.device)
         else:
             raise ValueError('pixel loss are None.')
 
@@ -147,120 +174,7 @@ class CVMambaIRDenoising(BaseModel):
         if self.ema_decay > 0:
             self.model_ema(decay=self.ema_decay)
 
-    def process_input(self, img, model_input_size):
-        
-        """
-        Process the input image to fit the model's input size by applying necessary patching and padding.
-        
-        Parameters:
-        - img: Input image tensor of shape (N, C, H, W).
-        - model_input_size: Tuple (H, W) representing the input size expected by the model.
-        
-        Returns:
-        - List of padded patches ready for model inference.
-        """
-        # save input image to file
-        # imwrite(tensor2img([img], rgb2bgr=True), 'input_img.png')
-        # Extract model input height and width
-        model_input_height, model_input_width = model_input_size
-        model_input_height -= 2
-        model_input_width -= 2
-        
-        # Get original image size
-        _, _, h, w = img.size()
-        
-        # List to hold patches
-        patches = []
-
-        # Calculate padding needed to make the image size divisible by model input size
-        pad_h = (model_input_height - (h % model_input_height)) % model_input_height
-        pad_w = (model_input_width - (w % model_input_width)) % model_input_width
-
-        # Pad the original image to make it divisible by model input size, considering the 1px padding
-        if pad_h > 0 or pad_w > 0:
-            img = F.pad(img, (0, pad_w, 0, pad_h), mode='reflect')
-        
-        # New height and width after padding
-        _, _, padded_h, padded_w = img.size()
-        
-        # save paadded image to file 
-        # imwrite(tensor2img([img], rgb2bgr=True), 'padded_img.png')
-
-        # Iterate over the padded image in patches
-        for i in range(0, padded_h, model_input_height):
-            for j in range(0, padded_w, model_input_width):
-                # Extract patch
-                patch = img[:, :, i:i + model_input_height, j:j + model_input_width]
-                
-                # Calculate additional padding needed for each patch to fit the model input size
-                patch_h, patch_w = patch.size(2), patch.size(3)
-                
-                patch = F.pad(patch, (1, 1, 1, 1), mode='reflect')
-                
-                if hasattr(self, 'net_g_ema'):
-                    self.net_g_ema.eval()
-                    with torch.no_grad():
-                        pred = self.net_g_ema(patch)
-                    if isinstance(pred, list):
-                        pred = pred[-1]
-                    
-                else:
-                    self.net_g.eval()
-                    with torch.no_grad():
-                        pred = self.net_g(patch)
-                    if isinstance(pred, list):
-                        pred = pred[-1]
-                # remove the padding around output
-                pred = pred[:, :, 1:-1, 1:-1]
-                patches.append(pred)
-                # save patch to file
-                # imwrite(tensor2img([pred], rgb2bgr=True), f'patch_{i}_{j}.png')
-        
-        def unpatch_image(patches, original_height, original_width, patch_size):
-            """
-            Reconstructs the original image from a list of processed patches.
-            
-            Parameters:
-            - patches: List of patches (each patch tensor has shape (C, patch_H, patch_W)) from the model output.
-            - original_height: Original height of the full image before patching.
-            - original_width: Original width of the full image before patching.
-            - patch_size: Size of each patch (H, W) after padding was added.
-            
-            Returns:
-            - Full image reconstructed from patches, resized to the original dimensions.
-            """
-            # Determine the number of patches along the height and width
-            patches_per_row = original_width // patch_size[1]
-            patches_per_col = original_height // patch_size[0]
-            
-            # Initialize an empty tensor for the reconstructed image
-            _, C, patch_H, patch_W = patches[0].size()  # Get channel and patch size from first patch
-            full_image = torch.zeros((C, patches_per_col * patch_H, patches_per_row * patch_W))
-            
-            # Fill in the full image tensor with patches
-            patch_idx = 0
-            for i in range(patches_per_col):
-                for j in range(patches_per_row):
-                    y_start = i * patch_H
-                    y_end = y_start + patch_H
-                    x_start = j * patch_W
-                    x_end = x_start + patch_W
-                    full_image[:, y_start:y_end, x_start:x_end] = patches[patch_idx]
-                    patch_idx += 1
-            
-            # Crop to original size in case padding was added during patching
-            full_image = full_image[:, :original_height, :original_width]
-            
-            return full_image
-        img = unpatch_image(patches, padded_h, padded_w, (model_input_height-2, model_input_width-2))
-        # save image to file
-        # imwrite(tensor2img([img], rgb2bgr=True), 'output_img.png')
-        self.output = img[:, 0:h, 0:w]
-
-    def pad_test(self, window_size): 
-        self.process_input(self.lq, (window_size, window_size))
-        return       
-        print(f"pad_test w {window_size} \nlq {self.lq.shape}")
+    def pad_test(self, window_size):        
         scale = self.opt.get('scale', 1)
         mod_pad_h, mod_pad_w = 0, 0
         _, _, h, w = self.lq.size()
@@ -274,10 +188,8 @@ class CVMambaIRDenoising(BaseModel):
         self.output = self.output[:, :, 0:h - mod_pad_h * scale, 0:w - mod_pad_w * scale]
 
     def nonpad_test(self, img=None):
-        print("\n\nonpad_test: ",img.shape )
         if img is None:
-            img = self.lq  
-
+            img = self.lq      
         if hasattr(self, 'net_g_ema'):
             self.net_g_ema.eval()
             with torch.no_grad():
@@ -293,9 +205,6 @@ class CVMambaIRDenoising(BaseModel):
                 pred = pred[-1]
             self.output = pred
             self.net_g.train()
-
-    
-
 
     def dist_validation(self, dataloader, current_iter, tb_logger, save_img, rgb2bgr=True, use_image=True):
         if os.environ['LOCAL_RANK'] == '0':
@@ -325,6 +234,7 @@ class CVMambaIRDenoising(BaseModel):
 
         for idx, val_data in enumerate(dataloader):
             img_name = osp.splitext(osp.basename(val_data['lq_path'][0]))[0]
+
             self.feed_data(val_data)
             test()
 
