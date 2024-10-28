@@ -112,6 +112,7 @@ class PairedImageDataset(data.Dataset):
             img_lq = img_gt + np.random.normal(0, self.noise/255., img_gt.shape)
 
         else:
+        
             # image range: [0, 1], float32., H W 3
             gt_path = self.paths[index]['gt_path']
             img_bytes = self.file_client.get(gt_path, 'gt')
@@ -137,7 +138,6 @@ class PairedImageDataset(data.Dataset):
         # TODO: It is better to update the datasets, rather than force to crop
         if self.opt['phase'] != 'train':
             img_gt = img_gt[0:img_lq.shape[0] * scale, 0:img_lq.shape[1] * scale, :]
-
         # BGR to RGB, HWC to CHW, numpy to tensor
         img_gt, img_lq = img2tensor([img_gt, img_lq], bgr2rgb=True, float32=True)
         # normalize

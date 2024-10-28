@@ -6,7 +6,7 @@ import sys
 # for some possible IMPORT ERROR
 # sys.path.append('/data1/guohang/MambaIR-main')
 from modelkit.data import build_dataloader, build_dataset
-from modelkit.model import build_model
+from modelkit.models import build_model
 from modelkit.utils import get_root_logger, get_time_str, make_exp_dirs
 from modelkit.utils.options import dict2str, parse_options
 from models import CVMambaIR

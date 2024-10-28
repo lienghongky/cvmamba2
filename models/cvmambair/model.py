@@ -8,7 +8,7 @@ from modelkit.utils.registry import MODEL_REGISTRY
 
 
 from modelkit.archs import build_network
-from modelkit.model.base_model import BaseModel
+from modelkit.models.base_model import BaseModel
 from modelkit.utils import get_root_logger, imwrite, tensor2img
 
 loss_module = importlib.import_module('modelkit.losses')
@@ -20,7 +20,6 @@ import numpy as np
 import cv2
 import torch.nn.functional as F
 from functools import partial
-from modelkit.utils import pad_image, create_patches, reconstruct_image_from_patches, tensor_to_image, image_to_tensor
 from modelkit.utils import Mixing_Augment
 
 @MODEL_REGISTRY.register()

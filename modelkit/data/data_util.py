@@ -231,9 +231,6 @@ def paired_paths_from_folder(folders, keys, filename_tmpl, task):
                 gt_path = osp.join(gt_folder[idx], gt_path)
                 paths.append(dict([(f'{input_key}_path', input_path), (f'{gt_key}_path', gt_path)]))
     else:
-        print(input_folder)
-        print(gt_folder)
-        print(os.getcwd())
         input_paths = list(scandir(os.path.join(os.getcwd(),input_folder)))
         gt_paths = list(scandir(os.path.join(os.getcwd(),gt_folder)))
         assert len(input_paths) == len(gt_paths), (f'{input_key} and {gt_key} datasets have different number of images: '

@@ -13,9 +13,10 @@ __all__ = ['build_model']
 model_folder = osp.dirname(osp.abspath(__file__))
 model_filenames = [osp.splitext(osp.basename(v))[0] for v in scandir(model_folder) if v.endswith('_model.py')]
 # import all the model modules
-_model_modules = [importlib.import_module(f'modelkit.model.{file_name}') for file_name in model_filenames]
+_model_modules = [importlib.import_module(f'modelkit.models.{file_name}') for file_name in model_filenames]
 
-
+def generate_model(model):
+    return 0
 def build_model(opt):
     """Build model from options.
 
@@ -25,6 +26,8 @@ def build_model(opt):
     """
     opt = deepcopy(opt)
     model = MODEL_REGISTRY.get(opt['model_type'])(opt)
+    generate_model(model)
+ 
     logger = get_root_logger()
     logger.info(f'Model [{model.__class__.__name__}] is created.')
     return model

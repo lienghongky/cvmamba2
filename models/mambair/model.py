@@ -2,7 +2,7 @@ import torch
 from torch.nn import functional as F
 
 from modelkit.utils.registry import MODEL_REGISTRY
-from modelkit.model.sr_model import SRModel
+from modelkit.models.sr_model import SRModel
 
 
 @MODEL_REGISTRY.register()

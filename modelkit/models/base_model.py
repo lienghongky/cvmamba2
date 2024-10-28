@@ -4,14 +4,14 @@ import torch
 from collections import OrderedDict
 from copy import deepcopy
 from torch.nn.parallel import DataParallel, DistributedDataParallel
-
-from modelkit.model import lr_scheduler as lr_scheduler
+from abc import ABC, abstractmethod
+from modelkit.models import lr_scheduler as lr_scheduler
 from modelkit.utils import get_root_logger
 from modelkit.utils.dist_util import master_only
 
 
 
-class BaseModel():
+class BaseModel(ABC):
     """Base model."""
 
     def __init__(self, opt):
@@ -20,20 +20,28 @@ class BaseModel():
         self.is_train = opt['is_train']
         self.schedulers = []
         self.optimizers = []
-
+    @abstractmethod
     def feed_data(self, data):
         pass
-
+    @abstractmethod
     def optimize_parameters(self):
         pass
-
+    @abstractmethod
     def get_current_visuals(self):
         pass
-
+    @abstractmethod
     def save(self, epoch, current_iter):
         """Save networks and training state."""
         pass
-
+    @abstractmethod
+    def dist_validation(self, dataloader, current_iter, tb_logger, save_img=False):
+        """Distributed validation function for models."""
+        pass
+    @abstractmethod
+    def nondist_validation(self, dataloader, current_iter, tb_logger, save_img=False):
+        """Distributed validation function for models."""
+        pass
+    
     def validation(self, dataloader, current_iter, tb_logger, save_img=False):
         """Validation function.
 
@@ -179,7 +187,7 @@ class BaseModel():
 
         logger = get_root_logger()
         logger.info(f'Network: {net_cls_str}, with parameters: {net_params:,d}')
-        logger.info(net_str)
+        # TODO: logger.info(net_str)
 
     def _set_lr(self, lr_groups_l):
         """Set learning rate for warmup.
